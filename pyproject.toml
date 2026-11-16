@@ -1,2 +1,14 @@
+[project]
+name = "ku-workshops"
+version = "1.0.0"
+requires-python = ">=3.12"
+dependencies = [
+	"fastapi>=0.115,<1",
+	"httpx>=0.27,<1",
+	"upstash-redis>=1.4,<2",
+	"python-dotenv>=1,<2",
+	"uvicorn[standard]>=0.30,<1",
+]
+
 [tool.vercel]
 entrypoint = "backend.main:app"

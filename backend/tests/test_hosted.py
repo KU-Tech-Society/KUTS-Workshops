@@ -1,4 +1,6 @@
 import asyncio
+import tomllib
+from pathlib import Path
 
 import fakeredis.aioredis
 import pytest
@@ -12,6 +14,18 @@ from app.persistence import Repository
 from app.hosted_auth import HostedAuth, HostedSettings
 from app.hosted import create_hosted_app
 from upstash_redis.asyncio import Redis
+
+
+def test_vercel_manifest_declares_all_backend_runtime_dependencies():
+    root = Path(__file__).resolve().parents[2]
+    manifest = tomllib.loads((root / "pyproject.toml").read_text())
+    requirements = {
+        line.strip()
+        for line in (root / "backend/requirements.txt").read_text().splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+    assert set(manifest["project"]["dependencies"]) == requirements
+    assert manifest["tool"]["vercel"]["entrypoint"] == "backend.main:app"
 
 
 class TestRedis(fakeredis.aioredis.FakeRedis):
