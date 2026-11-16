@@ -550,6 +550,42 @@ footer {
   margin: 0 auto;
 }
 
+.import-workshops {
+  border: 0;
+  padding: 0;
+  margin: 20px 0;
+}
+
+.import-workshops legend {
+  font-weight: 700;
+}
+
+.workshop-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.workshop-label {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: #e8f1fa;
+  color: #23486c;
+  font-size: .82rem;
+  line-height: 1.4;
+}
+
+.workshop-label.aiw {
+  background: #e5f2e9;
+  color: #20553b;
+}
+
+.import-preview {
+  max-height: 320px;
+  overflow: auto;
+}
+
 .organiser-session {
   max-width: 1180px;
   margin: 0 auto;

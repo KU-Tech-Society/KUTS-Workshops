@@ -2,7 +2,15 @@ import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { csvCell, readCsv } from "./csv";
 import LiveInbox from "./LiveInbox";
 import { api, HOSTED } from "./api";
-import type { Batch, EntryStatus, Preview, PreviewEntry, Team } from "./types";
+import { workshopNames } from "./types";
+import type {
+	Batch,
+	EntryStatus,
+	Preview,
+	PreviewEntry,
+	Team,
+	Workshop,
+} from "./types";
 
 const DEFAULT_MAX_INPUT_BYTES = 1_048_576;
 const DEFAULT_MAX_INPUT_ROWS = 500;
@@ -24,6 +32,10 @@ function App() {
 	const [text, setText] = useState("");
 	const [hasHeader, setHasHeader] = useState(true);
 	const [usernameColumn, setUsernameColumn] = useState(0);
+	const [workshopColumn, setWorkshopColumn] = useState<number | null>(
+		null,
+	);
+	const [workshops, setWorkshops] = useState<Workshop[]>([]);
 	const [teams, setTeams] = useState<Team[]>([]);
 	const [teamId, setTeamId] = useState<number | null>(null);
 	const [preview, setPreview] = useState<Preview | null>(null);
@@ -136,6 +148,41 @@ function App() {
 		}
 	}, [inputMode, text]);
 	const headers = csvRows[0] ?? [];
+	const usesWorkshopColumn =
+		inputMode === "csv" && workshopColumn !== null;
+	const importRows =
+		inputMode === "csv"
+			? csvRows
+					.slice(hasHeader ? 1 : 0)
+					.filter((row) =>
+						row.some((cell) => cell.trim()),
+					)
+					.map((row) => ({
+						username:
+							row[usernameColumn] ??
+							"(missing username)",
+						workshops: usesWorkshopColumn
+							? (
+									row[
+										workshopColumn!
+									] ?? ""
+								)
+									.toUpperCase()
+									.split(
+										/[;,|\s]+/,
+									)
+									.filter(
+										Boolean,
+									)
+							: workshops,
+					}))
+			: text
+					.split(/\r?\n/)
+					.filter((line) => line.trim())
+					.map((username) => ({
+						username,
+						workshops,
+					}));
 	const previewRows = preview?.entries ?? [];
 	const visibleRows = previewRows.filter((entry) => {
 		const query = filter.trim().toLowerCase();
@@ -145,6 +192,8 @@ function App() {
 				entry.submitted_username,
 				entry.login ?? "",
 				labels[entry.status],
+				entry.display_name ?? "",
+				...(entry.workshops ?? []),
 			].some((value) => value.toLowerCase().includes(query))
 		);
 	});
@@ -168,6 +217,7 @@ function App() {
 		try {
 			setText(await file.text());
 			setUsernameColumn(0);
+			setWorkshopColumn(null);
 		} catch {
 			setError("Could not read the selected CSV file.");
 		}
@@ -190,6 +240,12 @@ function App() {
 					has_header:
 						inputMode === "csv" &&
 						hasHeader,
+					workshop_column: usesWorkshopColumn
+						? workshopColumn
+						: null,
+					workshops: usesWorkshopColumn
+						? []
+						: workshops,
 				}),
 			});
 			setPreview(created);
@@ -336,6 +392,7 @@ function App() {
 			[
 				"Submitted username",
 				"Resolved login",
+				"Workshops",
 				"Outcome",
 				"Invitation ID",
 				"Details",
@@ -343,6 +400,7 @@ function App() {
 			...batch.results.map((result) => [
 				result.submitted_username,
 				result.login ?? "",
+				(result.workshops ?? []).join(";"),
 				result.status,
 				result.invitation_id ?? "",
 				result.message,
@@ -406,11 +464,14 @@ function App() {
 
 			<LiveInbox
 				disabled={busy || step !== "import"}
-				onUse={(usernames) => {
-					setInputMode("lines");
-					setText(usernames);
+				onUse={(csv) => {
+					setInputMode("csv");
+					setHasHeader(true);
+					setUsernameColumn(0);
+					setWorkshopColumn(1);
+					setText(csv);
 					setNotice(
-						"Student usernames copied into a fresh import. Import, resolve, and visually review before confirming invitations.",
+						"Workshop applications ready for import. Accounts applying to both CW and AIW are combined into one organisation invitation.",
 					);
 				}}
 			/>
@@ -587,6 +648,71 @@ function App() {
 								</label>
 							)}
 							{csvRows.length > 0 && (
+								<label
+									className="field-label"
+									htmlFor="workshop-column"
+								>
+									Workshop
+									column
+									<select
+										id="workshop-column"
+										value={
+											workshopColumn ??
+											""
+										}
+										onChange={(
+											event,
+										) =>
+											setWorkshopColumn(
+												event
+													.target
+													.value ===
+													""
+													? null
+													: Number(
+															event
+																.target
+																.value,
+														),
+											)
+										}
+									>
+										<option value="">
+											Assign
+											workshops
+											to
+											the
+											whole
+											list
+										</option>
+										{headers.map(
+											(
+												header,
+												index,
+											) => (
+												<option
+													key={
+														index
+													}
+													value={
+														index
+													}
+													disabled={
+														index ===
+														usernameColumn
+													}
+												>
+													{hasHeader
+														? header ||
+															`Column ${index + 1}`
+														: `Column ${index + 1}`}
+												</option>
+											),
+										)}
+									</select>
+								</label>
+							)}
+							{csvRows.length > 0 && (
 								<p className="muted small">
 									Detected
 									columns:{" "}
@@ -604,6 +730,67 @@ function App() {
 								</p>
 							)}
 						</div>
+					)}
+					{!usesWorkshopColumn && (
+						<fieldset className="import-workshops">
+							<legend>
+								Workshop
+								applications
+							</legend>
+							{(
+								[
+									"CW",
+									"AIW",
+								] as Workshop[]
+							).map((workshop) => (
+								<label
+									className="checkbox-line"
+									key={
+										workshop
+									}
+								>
+									<input
+										type="checkbox"
+										checked={workshops.includes(
+											workshop,
+										)}
+										onChange={(
+											event,
+										) =>
+											setWorkshops(
+												(
+													current,
+												) =>
+													event
+														.target
+														.checked
+														? [
+																...current,
+																workshop,
+															]
+														: current.filter(
+																(
+																	value,
+																) =>
+																	value !==
+																	workshop,
+															),
+											)
+										}
+									/>
+									{
+										workshopNames[
+											workshop
+										]
+									}{" "}
+									(
+									{
+										workshop
+									}
+									)
+								</label>
+							))}
+						</fieldset>
 					)}
 					<label
 						className="field-label"
@@ -629,6 +816,67 @@ function App() {
 								: "octocat\nstudent-example"
 						}
 					/>
+					{importRows.length > 0 && (
+						<div className="table-wrap import-preview">
+							<table>
+								<thead>
+									<tr>
+										<th>
+											GitHub
+											username
+										</th>
+										<th>
+											Workshop
+											applications
+										</th>
+									</tr>
+								</thead>
+								<tbody>
+									{importRows
+										.slice(
+											0,
+											20,
+										)
+										.map(
+											(
+												row,
+												index,
+											) => (
+												<tr
+													key={
+														index
+													}
+												>
+													<td>
+														{
+															row.username
+														}
+													</td>
+													<td>
+														<WorkshopLabels
+															workshops={
+																row.workshops
+															}
+														/>
+													</td>
+												</tr>
+											),
+										)}
+								</tbody>
+							</table>
+							{importRows.length >
+								20 && (
+								<p className="muted small">
+									Showing
+									20 of{" "}
+									{
+										importRows.length
+									}{" "}
+									rows
+								</p>
+							)}
+						</div>
+					)}
 					<div className="form-footer">
 						<span className="muted">
 							{text.length.toLocaleString()}{" "}
@@ -639,7 +887,10 @@ function App() {
 							onClick={createPreview}
 							disabled={
 								busy ||
-								!text.trim()
+								!text.trim() ||
+								(!usesWorkshopColumn &&
+									workshops.length ===
+										0)
 							}
 						>
 							{busy
@@ -841,6 +1092,10 @@ function App() {
 												account
 											</th>
 											<th>
+												Workshop
+												applications
+											</th>
+											<th>
 												Status
 											</th>
 										</tr>
@@ -973,22 +1228,60 @@ function App() {
 							</strong>
 						</p>
 					</div>
-					<h3>Exact resolved usernames</h3>
-					<ul className="username-list">
-						{selectedEntries.map(
-							(entry) => (
-								<li
-									key={
-										entry.id
-									}
-								>
-									{
-										entry.login
-									}
-								</li>
-							),
-						)}
-					</ul>
+					<h3>
+						Exact accounts and workshop
+						applications
+					</h3>
+					<div className="table-wrap">
+						<table>
+							<thead>
+								<tr>
+									<th>
+										GitHub
+										account
+									</th>
+									<th>
+										Display
+										name
+									</th>
+									<th>
+										Workshop
+										applications
+									</th>
+								</tr>
+							</thead>
+							<tbody>
+								{selectedEntries.map(
+									(
+										entry,
+									) => (
+										<tr
+											key={
+												entry.id
+											}
+										>
+											<td>
+												{
+													entry.login
+												}
+											</td>
+											<td>
+												{entry.display_name ??
+													"Not provided"}
+											</td>
+											<td>
+												<WorkshopLabels
+													workshops={
+														entry.workshops
+													}
+												/>
+											</td>
+										</tr>
+									),
+								)}
+							</tbody>
+						</table>
+					</div>
 					<p className="warning-text">
 						Team membership can grant
 						existing repository access.
@@ -1106,6 +1399,10 @@ function App() {
 										Username
 									</th>
 									<th>
+										Workshop
+										applications
+									</th>
+									<th>
 										Outcome
 									</th>
 									<th>
@@ -1130,6 +1427,20 @@ function App() {
 											<td>
 												{result.login ??
 													result.submitted_username}
+												{result.display_name && (
+													<small>
+														{
+															result.display_name
+														}
+													</small>
+												)}
+											</td>
+											<td>
+												<WorkshopLabels
+													workshops={
+														result.workshops
+													}
+												/>
 											</td>
 											<td>
 												<span
@@ -1268,6 +1579,9 @@ function PreviewRow({
 				)}
 			</td>
 			<td>
+				<WorkshopLabels workshops={entry.workshops} />
+			</td>
+			<td>
 				<span className={`badge ${entry.status}`}>
 					{labels[entry.status]}
 				</span>
@@ -1276,6 +1590,30 @@ function PreviewRow({
 				)}
 			</td>
 		</tr>
+	);
+}
+
+function WorkshopLabels({ workshops = [] }: { workshops?: readonly string[] }) {
+	return workshops.length ? (
+		<span className="workshop-labels">
+			{workshops.map((workshop) => (
+				<span
+					className={`workshop-label ${workshop.toLowerCase()}`}
+					key={workshop}
+					title={
+						workshopNames[
+							workshop as Workshop
+						] ?? "Invalid workshop"
+					}
+				>
+					{workshopNames[workshop as Workshop]
+						? `${workshopNames[workshop as Workshop]} (${workshop})`
+						: `Invalid: ${workshop}`}
+				</span>
+			))}
+		</span>
+	) : (
+		<span className="muted">Not assigned</span>
 	);
 }
 

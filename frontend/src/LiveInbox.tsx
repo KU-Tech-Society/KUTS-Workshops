@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { API, api, HOSTED } from "./api";
+import { workshopImportCsv } from "./csv";
+import type { Workshop } from "./types";
 
 interface Inbox {
 	enabled: boolean;
@@ -18,12 +20,20 @@ export default function LiveInbox({
 	onUse,
 }: {
 	disabled: boolean;
-	onUse: (usernames: string) => void;
+	onUse: (csv: string) => void;
 }) {
 	const [inbox, setInbox] = useState<Inbox | null>(null);
 	const [connected, setConnected] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState("");
+	const [workshopFilter, setWorkshopFilter] = useState<Workshop | "all">(
+		"all",
+	);
+	const submissions = (inbox?.submissions ?? []).filter(
+		(row) =>
+			workshopFilter === "all" ||
+			row.workshop === workshopFilter,
+	);
 
 	useEffect(() => {
 		if (HOSTED) {
@@ -152,6 +162,46 @@ export default function LiveInbox({
 					</p>
 					{inbox.submissions.length > 0 ? (
 						<>
+							<label
+								className="field-label"
+								htmlFor="inbox-workshop"
+							>
+								Workshop
+								applications
+							</label>
+							<select
+								id="inbox-workshop"
+								value={
+									workshopFilter
+								}
+								onChange={(
+									event,
+								) =>
+									setWorkshopFilter(
+										event
+											.target
+											.value as
+											| Workshop
+											| "all",
+									)
+								}
+							>
+								<option value="all">
+									CW and
+									AIW
+								</option>
+								<option value="CW">
+									Computing
+									Workshops
+									(CW)
+								</option>
+								<option value="AIW">
+									Artificial
+									Intelligence
+									Workshops
+									(AIW)
+								</option>
+							</select>
 							<div className="inbox-rows">
 								<table>
 									<thead>
@@ -168,7 +218,7 @@ export default function LiveInbox({
 										</tr>
 									</thead>
 									<tbody>
-										{inbox.submissions.map(
+										{submissions.map(
 											(
 												row,
 											) => (
@@ -203,25 +253,23 @@ export default function LiveInbox({
 								className="button button-primary"
 								disabled={
 									disabled ||
-									!connected
+									!connected ||
+									!submissions.length
 								}
 								onClick={() =>
 									onUse(
-										inbox.submissions
-											.map(
-												(
-													row,
-												) =>
-													row.username,
-											)
-											.join(
-												"\n",
-											),
+										workshopImportCsv(
+											submissions,
+										),
 									)
 								}
 							>
-								Use usernames in
-								fresh import
+								Import{" "}
+								{workshopFilter ===
+								"all"
+									? "CW + AIW"
+									: workshopFilter}{" "}
+								applications
 							</button>
 						</>
 					) : (

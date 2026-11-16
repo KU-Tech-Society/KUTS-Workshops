@@ -35,6 +35,8 @@ class ImportRequest(BaseModel):
     text: str = Field(max_length=MAX_INPUT_BYTES)
     username_column: int | None = None
     has_header: bool = False
+    workshop_column: int | None = None
+    workshops: list[Literal["CW", "AIW"]] = Field(default_factory=list, max_length=2)
 
 
 class ResolveRequest(BaseModel):
@@ -98,6 +100,7 @@ class PreviewEntryResponse(BaseModel):
     message: str | None
     source_row: int
     retry_after_seconds: int | None
+    workshops: list[Literal["CW", "AIW"]] = Field(default_factory=list)
 
 
 class PreviewResponse(BaseModel):
@@ -114,6 +117,8 @@ class BatchResultResponse(BaseModel):
     entry_id: str
     submitted_username: str
     login: str | None
+    display_name: str | None = None
+    workshops: list[Literal["CW", "AIW"]] = Field(default_factory=list)
     status: Literal[
         "invitation_sent",
         "already_member",
@@ -329,6 +334,8 @@ def create_app(github_client: Any | None = None) -> FastAPI:
                 has_header=body.has_header,
                 max_bytes=MAX_INPUT_BYTES,
                 max_rows=MAX_INPUT_ROWS,
+                workshop_column=body.workshop_column,
+                workshops=body.workshops,
             )
         except ImportErrorDetail as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -341,6 +348,7 @@ def create_app(github_client: Any | None = None) -> FastAPI:
                 status=item.status,
                 message=item.message,
                 login=item.login,
+                workshops=list(item.workshops),
             )
             for item in imported
         ]
@@ -703,6 +711,8 @@ def _result(
         "entry_id": entry.id,
         "submitted_username": entry.submitted,
         "login": entry.login,
+        "display_name": entry.display_name,
+        "workshops": entry.workshops,
         "status": status,
         "message": message,
         "invitation_id": invitation_id if isinstance(invitation_id, int) else None,

@@ -231,7 +231,11 @@ def test_hosted_confirmation_is_durable_and_bound_to_organiser():
         preview = first.post(
             "/api/previews",
             headers=headers,
-            json={"source": "lines", "text": "ready-student"},
+            json={
+                "source": "lines",
+                "text": "ready-student",
+                "workshops": ["CW", "AIW"],
+            },
         ).json()
         resolved = first.post(
             f"/api/previews/{preview['id']}/resolve",
@@ -240,6 +244,7 @@ def test_hosted_confirmation_is_durable_and_bound_to_organiser():
         )
         assert resolved.status_code == 200
         entry = resolved.json()["entries"][0]
+        assert entry["workshops"] == ["CW", "AIW"]
         other_headers = sign_in(second, repository, "other-session", 456)
         assert (
             second.post(
@@ -258,6 +263,7 @@ def test_hosted_confirmation_is_durable_and_bound_to_organiser():
         assert sent.status_code == 200, sent.text
         assert fake.invite_calls == [(22, [8])]
         assert sent.json()["results"][0]["status"] == "invitation_sent"
+        assert sent.json()["results"][0]["workshops"] == ["CW", "AIW"]
         sign_in(second, repository)
         assert (
             second.post(
@@ -271,6 +277,9 @@ def test_hosted_confirmation_is_durable_and_bound_to_organiser():
             second.get("/api/batches/latest").json()["batch"]["id"] == sent.json()["id"]
         )
         assert len(fake.invite_calls) == 1
+        recovered = second.get("/api/batches/latest").json()["batch"]["results"][0]
+        assert recovered["workshops"] == ["CW", "AIW"]
+        assert recovered["display_name"] == "Ready"
 
 
 def test_upstash_sdk_command_contract_with_local_redis():

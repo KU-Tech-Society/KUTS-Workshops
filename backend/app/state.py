@@ -18,6 +18,7 @@ class PreviewEntry:
     display_name: str | None = None
     avatar_url: str | None = None
     retry_after_seconds: int | None = None
+    workshops: list[str] = field(default_factory=list)
 
     def public(self) -> dict[str, Any]:
         return {
@@ -31,6 +32,7 @@ class PreviewEntry:
             "message": self.message,
             "source_row": self.source_row,
             "retry_after_seconds": self.retry_after_seconds,
+            "workshops": self.workshops,
         }
 
 
@@ -73,13 +75,21 @@ class MemoryStore:
 
     def clean(self) -> None:
         now = time.time()
-        self.previews = {key: value for key, value in self.previews.items() if value.expires_at > now}
-        self.batches = {key: value for key, value in self.batches.items() if value.expires_at > now or value.running}
+        self.previews = {
+            key: value for key, value in self.previews.items() if value.expires_at > now
+        }
+        self.batches = {
+            key: value
+            for key, value in self.batches.items()
+            if value.expires_at > now or value.running
+        }
 
     def add_preview(self, entries: list[PreviewEntry]) -> Preview:
         self.clean()
         if len(self.previews) >= 20:
-            oldest_id = min(self.previews, key=lambda key: self.previews[key].created_at)
+            oldest_id = min(
+                self.previews, key=lambda key: self.previews[key].created_at
+            )
             del self.previews[oldest_id]
         now = time.time()
         preview = Preview(

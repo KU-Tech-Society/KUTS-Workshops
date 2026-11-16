@@ -3,7 +3,6 @@ from fastapi.testclient import TestClient
 from app.github import AmbiguousInvitationError, GitHubError
 from app.main import create_app
 
-
 ORIGIN = "http://127.0.0.1:5173"
 HEADERS = {"Origin": ORIGIN, "Content-Type": "application/json"}
 
@@ -19,10 +18,30 @@ class FakeGitHub:
         self.ambiguous_invite_ids = set()
         self.rate_limited_logins = set()
         self.users = {
-            "private-member": {"id": 20, "login": "private-member", "name": None, "avatar_url": "https://avatars.githubusercontent.com/u/20"},
-            "waiting-student": {"id": 21, "login": "waiting-student", "name": "Wait", "avatar_url": "https://avatars.githubusercontent.com/u/21"},
-            "ready-student": {"id": 22, "login": "ready-student", "name": "Ready", "avatar_url": "https://avatars.githubusercontent.com/u/22"},
-            "ready-student-2": {"id": 23, "login": "ready-student-2", "name": "Ready 2", "avatar_url": "https://avatars.githubusercontent.com/u/23"},
+            "private-member": {
+                "id": 20,
+                "login": "private-member",
+                "name": None,
+                "avatar_url": "https://avatars.githubusercontent.com/u/20",
+            },
+            "waiting-student": {
+                "id": 21,
+                "login": "waiting-student",
+                "name": "Wait",
+                "avatar_url": "https://avatars.githubusercontent.com/u/21",
+            },
+            "ready-student": {
+                "id": 22,
+                "login": "ready-student",
+                "name": "Ready",
+                "avatar_url": "https://avatars.githubusercontent.com/u/22",
+            },
+            "ready-student-2": {
+                "id": 23,
+                "login": "ready-student-2",
+                "name": "Ready 2",
+                "avatar_url": "https://avatars.githubusercontent.com/u/23",
+            },
         }
 
     async def close(self):
@@ -39,7 +58,9 @@ class FakeGitHub:
 
     async def user(self, login):
         if login in self.rate_limited_logins:
-            raise GitHubError("GitHub rate limit reached.", status_code=429, retry_after=12)
+            raise GitHubError(
+                "GitHub rate limit reached.", status_code=429, retry_after=12
+            )
         return self.users.get(login)
 
     async def invite(self, account_id, team_ids, role):
@@ -87,7 +108,11 @@ def test_resolves_private_members_and_pending_invitations_without_misclassifying
     assert entries["private-member"]["status"] == "already_member"
     assert entries["waiting-student"]["status"] == "pending_invitation"
     assert entries["ready-student"]["status"] == "ready_to_invite"
-    assert response.json()["team"] == {"id": 8, "name": "Workshop cohort", "slug": "workshop-cohort"}
+    assert response.json()["team"] == {
+        "id": 8,
+        "name": "Workshop cohort",
+        "slug": "workshop-cohort",
+    }
     assert "account_id" not in entries["ready-student"]
 
 
@@ -96,7 +121,9 @@ def test_confirmation_required_and_selection_cannot_include_unreviewed_accounts(
     with client:
         preview = import_preview(client)
         resolved = resolve(client, preview["id"]).json()
-        ready = next(row for row in resolved["entries"] if row["status"] == "ready_to_invite")
+        ready = next(
+            row for row in resolved["entries"] if row["status"] == "ready_to_invite"
+        )
 
         no_confirmation = client.post(
             f"/api/previews/{preview['id']}/confirm-and-send",
@@ -158,7 +185,10 @@ def test_rejects_unexpected_origin_and_non_json_writes():
     with client:
         wrong_origin = client.post(
             "/api/previews",
-            headers={"Origin": "https://attacker.example", "Content-Type": "application/json"},
+            headers={
+                "Origin": "https://attacker.example",
+                "Content-Type": "application/json",
+            },
             json={"source": "lines", "text": "ready-student"},
         )
         wrong_type = client.post(
@@ -209,8 +239,16 @@ def test_used_preview_cannot_be_submitted_twice():
             "confirmed": True,
             "selected_entry_ids": [entry["id"]],
         }
-        first = client.post(f"/api/previews/{preview['id']}/confirm-and-send", headers=HEADERS, json=request)
-        second = client.post(f"/api/previews/{preview['id']}/confirm-and-send", headers=HEADERS, json=request)
+        first = client.post(
+            f"/api/previews/{preview['id']}/confirm-and-send",
+            headers=HEADERS,
+            json=request,
+        )
+        second = client.post(
+            f"/api/previews/{preview['id']}/confirm-and-send",
+            headers=HEADERS,
+            json=request,
+        )
 
     assert first.status_code == 200
     assert second.status_code == 409
@@ -256,7 +294,11 @@ def test_request_cannot_replace_fixed_organisation_or_role():
         response = client.post(
             "/api/previews",
             headers=HEADERS,
-            json={"source": "lines", "text": "ready-student", "organization": "attacker-org"},
+            json={
+                "source": "lines",
+                "text": "ready-student",
+                "organization": "attacker-org",
+            },
         )
     assert response.status_code == 422
     assert fake.invite_calls == []
@@ -272,12 +314,18 @@ def test_partial_batch_failure_is_reported_without_hiding_successes():
         response = client.post(
             f"/api/previews/{preview['id']}/confirm-and-send",
             headers=HEADERS,
-            json={"confirmed": True, "selected_entry_ids": [entry["id"] for entry in entries]},
+            json={
+                "confirmed": True,
+                "selected_entry_ids": [entry["id"] for entry in entries],
+            },
         )
 
     assert response.status_code == 200
     assert response.json()["totals"] == {"sent": 1, "failed": 1, "skipped": 0}
-    assert [result["status"] for result in response.json()["results"]] == ["failed", "invitation_sent"]
+    assert [result["status"] for result in response.json()["results"]] == [
+        "failed",
+        "invitation_sent",
+    ]
     assert len(fake.invite_calls) == 2
 
 
@@ -300,3 +348,69 @@ def test_rejects_malformed_or_nonlocal_host_headers():
     with client:
         response = client.get("/api/health", headers={"Host": "attacker.example"})
     assert response.status_code == 400
+
+
+def test_workshop_import_keeps_both_labels_and_name_through_single_invitation():
+    client, fake = make_client()
+    with client:
+        imported = client.post(
+            "/api/previews",
+            headers=HEADERS,
+            json={
+                "source": "csv",
+                "text": "github,workshop\nready-student,CW\nREADY-STUDENT,AIW\n",
+                "has_header": True,
+                "username_column": 0,
+                "workshop_column": 1,
+            },
+        )
+        assert imported.status_code == 200
+        preview = imported.json()
+        assert len(preview["entries"]) == 1
+        assert preview["entries"][0]["workshops"] == ["CW", "AIW"]
+        resolved = resolve(client, preview["id"]).json()
+        entry = resolved["entries"][0]
+        assert entry["display_name"] == "Ready"
+        assert entry["workshops"] == ["CW", "AIW"]
+        sent = client.post(
+            f"/api/previews/{preview['id']}/confirm-and-send",
+            headers=HEADERS,
+            json={
+                "confirmed": True,
+                "selected_entry_ids": [entry["id"]],
+            },
+        )
+        assert sent.status_code == 200
+        result = sent.json()["results"][0]
+        assert result["workshops"] == ["CW", "AIW"]
+        assert result["display_name"] == "Ready"
+        assert fake.invite_calls == [(22, [8])]
+        assert sent.json()["role"] == "direct_member"
+
+
+def test_import_rejects_unknown_workshop_target_and_confirmation_replacement():
+    client, fake = make_client()
+    with client:
+        invalid = client.post(
+            "/api/previews",
+            headers=HEADERS,
+            json={"source": "lines", "text": "ready-student", "workshops": ["OTHER"]},
+        )
+        assert invalid.status_code == 422
+        preview = client.post(
+            "/api/previews",
+            headers=HEADERS,
+            json={"source": "lines", "text": "ready-student", "workshops": ["CW"]},
+        ).json()
+        entry = resolve(client, preview["id"]).json()["entries"][0]
+        modified = client.post(
+            f"/api/previews/{preview['id']}/confirm-and-send",
+            headers=HEADERS,
+            json={
+                "confirmed": True,
+                "selected_entry_ids": [entry["id"]],
+                "workshops": ["AIW"],
+            },
+        )
+        assert modified.status_code == 422
+        assert fake.invite_calls == []

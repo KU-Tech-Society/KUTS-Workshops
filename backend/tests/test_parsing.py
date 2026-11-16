@@ -82,3 +82,67 @@ def test_handles_invalid_csv_column_and_ragged_rows():
     )
     assert entries[0].status == "invalid_input"
     assert entries[0].message == "Selected column is missing in this row."
+
+
+def test_csv_workshop_mapping_combines_both_applications_for_one_account():
+    entries = parse_import(
+        source="csv",
+        text="name,github,workshop\nExample,@student-one,CW\nExample,Student-One,AIW\nOther,student-two,AIW\n",
+        username_column=1,
+        workshop_column=2,
+        has_header=True,
+        max_bytes=1024,
+        max_rows=20,
+    )
+    assert [(entry.login, entry.workshops) for entry in entries] == [
+        ("student-one", ("CW", "AIW")),
+        ("student-two", ("AIW",)),
+    ]
+    assert all(entry.status == "awaiting_resolution" for entry in entries)
+
+
+def test_csv_header_does_not_consume_a_student_row_slot():
+    entries = parse_import(
+        source="csv",
+        text="github,workshop\nstudent-one,CW\nstudent-two,AIW\n",
+        username_column=0,
+        workshop_column=1,
+        has_header=True,
+        max_bytes=1024,
+        max_rows=2,
+    )
+    assert len(entries) == 2
+
+
+def test_pasted_usernames_can_be_assigned_to_both_workshops():
+    entries = parse_import(
+        source="lines",
+        text="student-one\nstudent-two",
+        username_column=None,
+        has_header=False,
+        workshops=["AIW", "CW"],
+        max_bytes=1024,
+        max_rows=20,
+    )
+    assert all(entry.workshops == ("CW", "AIW") for entry in entries)
+
+
+def test_csv_rejects_unknown_or_missing_workshops_and_keeps_real_duplicates():
+    entries = parse_import(
+        source="csv",
+        text="github,workshop\nstudent-one,CW\nSTUDENT-ONE,CW\nstudent-two,OTHER\nstudent-three,\nstudent-four\nstudent-five,CW;AIW\n",
+        username_column=0,
+        workshop_column=1,
+        has_header=True,
+        max_bytes=1024,
+        max_rows=20,
+    )
+    assert [entry.status for entry in entries] == [
+        "awaiting_resolution",
+        "duplicate_input",
+        "invalid_input",
+        "invalid_input",
+        "invalid_input",
+        "awaiting_resolution",
+    ]
+    assert entries[-1].workshops == ("CW", "AIW")

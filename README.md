@@ -14,13 +14,24 @@ After the one-time setup below:
 
 1. Open the society's **Vercel organiser URL** and select **Sign in with GitHub**. Only approved GitHub accounts can access organiser operations.
 2. Select **Open collection** and share the student page URL plus the six-character workshop code, for example `K7MP4R`. Letter case does not matter; codes avoid `0`, `1`, `I`, `L`, and `O`.
-3. Submissions appear in the inbox, refreshed about every three seconds. Choose **Use usernames in fresh import**, or upload/paste usernames from another signup form.
+3. Submissions appear in the inbox, refreshed about every three seconds. Filter **Workshop applications** to CW, AIW, or both, then select **Import CW + AIW applications** (or the selected workshop). You can also upload a CSV or paste usernames; map its workshop column or tick CW/AIW for the whole list.
 4. Import, optionally select an existing team, and select **Resolve accounts (read-only)**. Visually check the resolved profiles and deselect anyone you do not intend to invite. A valid GitHub account is not proof of student identity.
 5. Review the exact usernames, organisation, ordinary-member role, team, and count. Tick the confirmation and select **Send N invitations to KU-Computing-Workshops**.
 6. Check per-account results and export a results CSV if needed. Students must accept invitations on GitHub; submission is not automatic membership.
 7. Close collection, export anything needed, and select **Clear session**. This clears the shared workshop inbox and all previews/results, closes collection, and rotates the code for everyone. Sign out when finished.
 
 Team membership can grant existing repository access. Existing members are skipped rather than automatically added to teams. Pending invitations are not resent or cancelled. New submissions never change a review that is already in progress.
+
+Workshop labels stay with each account through import, review, confirmation, results, and results CSV export. A student applying to both CW and AIW appears once with both labels and receives at most one organisation invitation. GitHub display names appear after account resolution; they are profile data, not verified student identity. Workshop labels do not automatically select teams or change permissions.
+
+For a mixed workshop CSV, select the username and workshop columns. Use `CW`, `AIW`, or `CW;AIW` for both:
+
+```csv
+github_username,workshop
+workshop-example-01,CW
+workshop-example-02,AIW
+workshop-example-03,CW;AIW
+```
 
 ## One-Time Hosted Setup
 
@@ -267,8 +278,8 @@ Submissions and workshop labels appear in your inbox within about one second, wi
 
 ## Review and Send Invitations
 
-1. Choose **Use usernames in fresh import** from the live inbox, upload a CSV, or paste one username per line.
-2. For CSV files, indicate whether there is a header row and choose the GitHub username column. Unrelated columns are discarded during parsing.
+1. Choose the appropriate **Import applications** action from the live inbox, upload a CSV, or paste one username per line.
+2. For CSV files, indicate whether there is a header row and choose the GitHub username and workshop columns. For pasted lists or CSVs without a workshop column, select CW, AIW, or both for the list. Unrelated columns are discarded during parsing.
 3. Optionally select an existing team. Check its name and slug: team membership can grant access to existing repositories.
 4. Select **Resolve accounts (read-only)**. This looks up accounts and identifies existing members, pending invitations, duplicates, invalid input, and lookup failures. It does not send anything.
 5. Visually review each resolved account. A valid GitHub account is not proof of student identity. Select only the eligible accounts you intend to invite.
