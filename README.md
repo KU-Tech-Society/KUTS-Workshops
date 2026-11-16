@@ -2,7 +2,16 @@
 
 Collect students' GitHub usernames, review their accounts, and send invitations to **KU-Computing-Workshops**, entirely from your browser. Organisers do not need Python, Node.js, Cloudflare, or a terminal.
 
-**Choose a workshop → submit a username → organiser reviews → organiser confirms → students accept**
+```mermaid
+sequenceDiagram
+    participant S as Student
+    participant O as Organiser
+    participant G as GitHub
+    S->>O: Choose workshop and submit username
+    O->>G: Review account
+    O->>S: Confirm invitation
+    S->>G: Accept invitation
+```
 
 Students choose **KU Computing Workshops (CW)** or **KU Artificial Intelligence Workshops (AIW)** at **[ku-tech-society.github.io/KUTS-Workshops/](https://ku-tech-society.github.io/KUTS-Workshops/)**. Both choices currently use the same GitHub organisation; workshop selection does not grant extra access.
 
@@ -55,11 +64,11 @@ Use a persistent database without eviction for workshop state: losing Redis data
 
 Create a dedicated **GitHub OAuth App** in GitHub **Settings → Developer settings → OAuth Apps**:
 
-| Setting | Value |
-| --- | --- |
-| Homepage URL | Your stable Vercel organiser origin |
+| Setting                    | Value                                           |
+| -------------------------- | ----------------------------------------------- |
+| Homepage URL               | Your stable Vercel organiser origin             |
 | Authorization callback URL | `https://your-project.vercel.app/auth/callback` |
-| Callback wildcard matching | Disabled; use the exact callback URL |
+| Callback wildcard matching | Disabled; use the exact callback URL            |
 
 Copy the client ID and generated client secret into the server-side Vercel settings below. This OAuth app identifies organisers only; it requests no extra repository/organisation scopes and does not send invitations with a user's OAuth token. Login uses state, PKCE, and an opaque Secure/HttpOnly session cookie.
 
@@ -69,16 +78,16 @@ Approve organisers by their **numeric GitHub account IDs**, not changeable usern
 
 In Vercel **Settings → Environment Variables**, set the following for **Production**, then redeploy. [.env.example](.env.example) contains placeholders only; do not upload your local `.env`.
 
-| Variable | Value |
-| --- | --- |
-| `APP_ORIGIN` | Exact organiser origin, e.g. `https://your-project.vercel.app`, without a path |
-| `STUDENT_ORIGIN` | `https://ku-tech-society.github.io`, without `/KUTS-Workshops/` |
-| `GITHUB_OAUTH_CLIENT_ID` | OAuth App client ID |
-| `GITHUB_OAUTH_CLIENT_SECRET` | OAuth App client secret; server only |
-| `ORGANISER_GITHUB_IDS` | Comma-separated approved numeric IDs, e.g. `12345678,87654321` |
-| `GITHUB_TOKEN` | Organisation owner's fine-grained PAT restricted to KU-Computing-Workshops with organisation **Members: read and write** only |
-| `UPSTASH_REDIS_REST_URL` | HTTPS Redis REST endpoint from Upstash |
-| `UPSTASH_REDIS_REST_TOKEN` | Server-side Redis REST token |
+| Variable                     | Value                                                                                                                         |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `APP_ORIGIN`                 | Exact organiser origin, e.g. `https://your-project.vercel.app`, without a path                                                |
+| `STUDENT_ORIGIN`             | `https://ku-tech-society.github.io`, without `/KUTS-Workshops/`                                                               |
+| `GITHUB_OAUTH_CLIENT_ID`     | OAuth App client ID                                                                                                           |
+| `GITHUB_OAUTH_CLIENT_SECRET` | OAuth App client secret; server only                                                                                          |
+| `ORGANISER_GITHUB_IDS`       | Comma-separated approved numeric IDs, e.g. `12345678,87654321`                                                                |
+| `GITHUB_TOKEN`               | Organisation owner's fine-grained PAT restricted to KU-Computing-Workshops with organisation **Members: read and write** only |
+| `UPSTASH_REDIS_REST_URL`     | HTTPS Redis REST endpoint from Upstash                                                                                        |
+| `UPSTASH_REDIS_REST_TOKEN`   | Server-side Redis REST token                                                                                                  |
 
 The invitation PAT needs no repository write permissions. Its owner must be an organisation owner; approval and SSO policy still apply. Fine-grained PATs are SSO-authorised during creation. Prefer a short expiry and rotate/revoke it in GitHub when appropriate.
 
@@ -113,16 +122,16 @@ Sign in using an approved account, open collection, and submit a fictional usern
 
 ## Hosted Troubleshooting
 
-| Problem | Check |
-| --- | --- |
-| Vercel build/start fails | Import from repository root with FastAPI selected. Keep the checked-in entrypoint/build settings and configure all required Production variables, then redeploy. |
-| Sign-in says account is not approved | Verify the numeric GitHub ID, not username, is in `ORGANISER_GITHUB_IDS`. Redeploy after updating it. |
-| GitHub callback fails | Match `APP_ORIGIN`, production domain, and the OAuth App's exact `/auth/callback` URL. Start sign-in again if state expired; do not reuse an old callback link. |
-| Students get 403 or cannot submit | Open collection, check the six-character code and exact `STUDENT_ORIGIN`. Republish Pages if the backend URL changed. Ensure production is not behind a Vercel platform login. |
-| Operation busy | Wait for the active organiser action or its 60-second lease to end. Do not keep resending an invitation request. |
-| Session expires | Sign in again. Your saved batch is recovered; check results before any new review. |
-| GitHub denies access | Check PAT expiry, Members permission, owner role, organisation approval, and SSO. A successful organiser sign-in is separate from invitation-token permission. |
-| Storage unavailable or status unknown | Stop sending. Restore storage if needed, inspect GitHub members/pending invitations, and reconcile saved results before any fresh reviewed batch. |
+| Problem                               | Check                                                                                                                                                                          |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Vercel build/start fails              | Import from repository root with FastAPI selected. Keep the checked-in entrypoint/build settings and configure all required Production variables, then redeploy.               |
+| Sign-in says account is not approved  | Verify the numeric GitHub ID, not username, is in `ORGANISER_GITHUB_IDS`. Redeploy after updating it.                                                                          |
+| GitHub callback fails                 | Match `APP_ORIGIN`, production domain, and the OAuth App's exact `/auth/callback` URL. Start sign-in again if state expired; do not reuse an old callback link.                |
+| Students get 403 or cannot submit     | Open collection, check the six-character code and exact `STUDENT_ORIGIN`. Republish Pages if the backend URL changed. Ensure production is not behind a Vercel platform login. |
+| Operation busy                        | Wait for the active organiser action or its 60-second lease to end. Do not keep resending an invitation request.                                                               |
+| Session expires                       | Sign in again. Your saved batch is recovered; check results before any new review.                                                                                             |
+| GitHub denies access                  | Check PAT expiry, Members permission, owner role, organisation approval, and SSO. A successful organiser sign-in is separate from invitation-token permission.                 |
+| Storage unavailable or status unknown | Stop sending. Restore storage if needed, inspect GitHub members/pending invitations, and reconcile saved results before any fresh reviewed batch.                              |
 
 ## Development and Automated Checks
 
@@ -181,13 +190,13 @@ Run the copy command only during initial setup: it replaces any existing `.env`.
 
 An owner of **KU-Computing-Workshops** should open GitHub **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**.
 
-| Setting | Value |
-| --- | --- |
-| Resource owner | `KU-Computing-Workshops` |
-| Expiration | A short lifetime covering the workshop |
-| Organisation permissions | **Members: Read and write** |
-| Repository permissions | None required; do not grant repository write access |
-| Account permissions | None required for public profile lookups |
+| Setting                  | Value                                               |
+| ------------------------ | --------------------------------------------------- |
+| Resource owner           | `KU-Computing-Workshops`                            |
+| Expiration               | A short lifetime covering the workshop              |
+| Organisation permissions | **Members: Read and write**                         |
+| Repository permissions   | None required; do not grant repository write access |
+| Account permissions      | None required for public profile lookups            |
 
 Open the project-root `.env` file and replace the `GITHUB_TOKEN` placeholder with your token. Leave the other defaults unchanged for now.
 
@@ -201,14 +210,14 @@ An organization may require approval for fine-grained tokens; while pending, a t
 
 Keep these two terminals open. Start each from the repository's top-level folder.
 
-**Terminal 1: backend**
+### Terminal 1: backend
 
 ```bash
 . .venv/bin/activate
 PYTHONPATH=backend python3 -m app.serve
 ```
 
-**Terminal 2: organiser page**
+### Terminal 2: organiser page
 
 ```bash
 npm --prefix frontend run dev
@@ -315,32 +324,32 @@ Repository URLs and non-GitHub hosts are rejected. Existing members are skipped 
 
 ## Troubleshooting
 
-| Problem | What to check |
-| --- | --- |
-| `python3 -m venv` fails | On Debian/Ubuntu, install the matching `python3-venv` package, then recreate the environment. |
-| Backend will not start | Run from the repository root, activate `.venv`, and install `backend/requirements.txt`. Check ports 8000 and 8001 are not already occupied. |
-| Organiser page cannot connect | Keep both terminals running. Use `http://127.0.0.1:5173/`, with `FRONTEND_ORIGIN=http://127.0.0.1:5173` in `.env`. |
+| Problem                             | What to check                                                                                                                                                                                              |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `python3 -m venv` fails             | On Debian/Ubuntu, install the matching `python3-venv` package, then recreate the environment.                                                                                                              |
+| Backend will not start              | Run from the repository root, activate `.venv`, and install `backend/requirements.txt`. Check ports 8000 and 8001 are not already occupied.                                                                |
+| Organiser page cannot connect       | Keep both terminals running. Use `http://127.0.0.1:5173/`, with `FRONTEND_ORIGIN=http://127.0.0.1:5173` in `.env`.                                                                                         |
 | GitHub returns 403 or denies access | Check the token belongs to an organisation owner, targets KU-Computing-Workshops, has Members: read and write, is approved/SSO-authorised, and has not expired. Restart the backend after changing `.env`. |
-| Student page cannot submit | Open collection, check the code, keep the tunnel running, and confirm the published page uses the current HTTPS tunnel URL. Check `STUDENT_API_HOST` and `STUDENT_ORIGIN` match their formats above. |
-| Pages workflow is unavailable | Ensure the workflow is on the repository's default branch, GitHub Actions is enabled, and you have permission to run it. Set Pages source to GitHub Actions. |
-| Inbox says reconnecting | Keep the local backend running. It will replay the current inbox when the connection returns. Use the launcher shown above. |
-| Invitation already pending | Ask the student to check GitHub for the existing invitation. This tool deliberately does not resend it. |
-| Rate limited | Wait for the displayed retry/reset guidance. Do not repeatedly resubmit a batch. |
-| Status unknown | Review organisation members, pending invitations, and activity in GitHub before any fresh attempt. |
+| Student page cannot submit          | Open collection, check the code, keep the tunnel running, and confirm the published page uses the current HTTPS tunnel URL. Check `STUDENT_API_HOST` and `STUDENT_ORIGIN` match their formats above.       |
+| Pages workflow is unavailable       | Ensure the workflow is on the repository's default branch, GitHub Actions is enabled, and you have permission to run it. Set Pages source to GitHub Actions.                                               |
+| Inbox says reconnecting             | Keep the local backend running. It will replay the current inbox when the connection returns. Use the launcher shown above.                                                                                |
+| Invitation already pending          | Ask the student to check GitHub for the existing invitation. This tool deliberately does not resend it.                                                                                                    |
+| Rate limited                        | Wait for the displayed retry/reset guidance. Do not repeatedly resubmit a batch.                                                                                                                           |
+| Status unknown                      | Review organisation members, pending invitations, and activity in GitHub before any fresh attempt.                                                                                                         |
 
 ## Limits and Privacy
 
 This is a lightweight organiser tool, not a learning-management system. It has no database, student accounts, or identity verification. GitHub Classroom is not used. It does not create teams, change repository permissions, or grant owner access.
 
-| Limit | Default |
-| --- | --- |
-| CSV/pasted import | 1 MiB and 500 rows |
-| Combined student inbox | 500 submissions |
-| Public submission | One username; 256 UTF-8 bytes; 2 KiB request body |
-| Submission attempts | 120 per minute across the workshop instance |
-| Invitation batch | At most 50 accounts; processed sequentially |
-| Reviewed preview lifetime | 15 minutes |
-| Student inbox lifetime | Four hours |
+| Limit                     | Default                                           |
+| ------------------------- | ------------------------------------------------- |
+| CSV/pasted import         | 1 MiB and 500 rows                                |
+| Combined student inbox    | 500 submissions                                   |
+| Public submission         | One username; 256 UTF-8 bytes; 2 KiB request body |
+| Submission attempts       | 120 per minute across the workshop instance       |
+| Invitation batch          | At most 50 accounts; processed sequentially       |
+| Reviewed preview lifetime | 15 minutes                                        |
+| Student inbox lifetime    | Four hours                                        |
 
 Import limits and preview expiry can be adjusted using the variables in [.env.example](.env.example). `MAX_INVITES_PER_BATCH` can lower the 50-account cap, but cannot raise it. GitHub also applies its own limits: currently 50 invitations per 24 hours, or 500 for organisations over a month old or on a paid plan. Authenticated REST requests typically have a 5,000-per-hour primary limit, with additional secondary limits. The app surfaces rate limits rather than blindly retrying.
 
