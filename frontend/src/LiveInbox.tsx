@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { API, api, HOSTED } from "./api";
 
 interface Inbox {
 	enabled: boolean;
@@ -11,8 +12,6 @@ interface Inbox {
 		submitted_at: string;
 	}[];
 }
-
-const API = "http://127.0.0.1:8000";
 
 export default function LiveInbox({
 	disabled,
@@ -27,6 +26,30 @@ export default function LiveInbox({
 	const [error, setError] = useState("");
 
 	useEffect(() => {
+		if (HOSTED) {
+			let active = true;
+			let timer: ReturnType<typeof setTimeout>;
+			const poll = async () => {
+				try {
+					const snapshot =
+						await api<Inbox>("/api/intake");
+					if (active) {
+						setInbox(snapshot);
+						setConnected(true);
+					}
+				} catch {
+					if (active) setConnected(false);
+				} finally {
+					if (active)
+						timer = setTimeout(poll, 3000);
+				}
+			};
+			void poll();
+			return () => {
+				active = false;
+				clearTimeout(timer);
+			};
+		}
 		const stream = new EventSource(`${API}/api/intake/events`);
 		stream.onmessage = (event) => {
 			try {
@@ -45,18 +68,14 @@ export default function LiveInbox({
 		setBusy(true);
 		setError("");
 		try {
-			const response = await fetch(`${API}/api/intake`, {
+			const updated = await api<Inbox>("/api/intake", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({
 					enabled: !inbox.enabled,
 				}),
 			});
-			if (!response.ok)
-				throw new Error(
-					"Could not change collection state.",
-				);
-			setInbox((await response.json()) as Inbox);
+			setInbox(updated);
 		} catch (cause) {
 			setError(
 				cause instanceof Error

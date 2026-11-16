@@ -4,8 +4,8 @@ on:
     workflow_dispatch:
         inputs:
             api_url:
-                description: HTTPS origin of the student-only Cloudflare Tunnel
-                required: true
+                description: HTTPS Vercel backend origin (overrides STUDENT_API_URL repository variable)
+                required: false
                 type: string
 
 permissions:
@@ -22,7 +22,7 @@ jobs:
         runs-on: ubuntu-latest
         environment:
             name: github-pages
-            url: ${{ steps.deployment.outputs.page_url }}student.html
+            url: ${{ steps.deployment.outputs.page_url }}
         steps:
             - uses: actions/checkout@v4
             - uses: actions/setup-node@v4
@@ -36,7 +36,7 @@ jobs:
             - run: npm run build:student
               working-directory: frontend
               env:
-                  VITE_STUDENT_API_URL: ${{ inputs.api_url }}
+                  VITE_STUDENT_API_URL: ${{ inputs.api_url || vars.STUDENT_API_URL }}
             - uses: actions/upload-pages-artifact@v3
               with:
                   path: frontend/dist-student

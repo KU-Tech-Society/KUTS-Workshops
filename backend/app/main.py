@@ -242,6 +242,7 @@ def create_app(github_client: Any | None = None) -> FastAPI:
     app.state.intake = Intake()
     app.state.batch_guard = asyncio.Lock()
     app.state.batch_running = False
+    app.state.checkpoint = None
 
     app.add_middleware(LocalRequestGuard)
     app.add_middleware(
@@ -498,28 +499,40 @@ def create_app(github_client: Any | None = None) -> FastAPI:
             preview.batch_id = batch.id
 
         try:
-            for entry_id in body.selected_entry_ids:
+            batch.results = [
+                _result(
+                    eligible[entry_id],
+                    "status_unknown",
+                    "Processing was not completed. Review GitHub before any fresh retry.",
+                )
+                for entry_id in body.selected_entry_ids
+            ]
+            if app.state.checkpoint:
+                await app.state.checkpoint()
+            for index, entry_id in enumerate(body.selected_entry_ids):
                 entry = eligible[entry_id]
                 result = await _invite_one(app.state.github, entry, preview)
-                batch.results.append(result)
+                batch.results[index] = result
+                if app.state.checkpoint:
+                    await app.state.checkpoint()
                 if result["status"] == "failed" and result.get("rate_limited"):
-                    for remaining_id in body.selected_entry_ids[
-                        body.selected_entry_ids.index(entry_id) + 1 :
-                    ]:
+                    for remaining_index, remaining_id in enumerate(
+                        body.selected_entry_ids[index + 1 :], start=index + 1
+                    ):
                         remaining = eligible[remaining_id]
-                        batch.results.append(
-                            _result(
-                                remaining,
-                                "failed",
-                                "Batch stopped after GitHub rate limiting; review before starting a new batch.",
-                            )
+                        batch.results[remaining_index] = _result(
+                            remaining,
+                            "failed",
+                            "Batch stopped after GitHub rate limiting; review before starting a new batch.",
                         )
                     break
-                if len(batch.results) < len(body.selected_entry_ids):
+                if index + 1 < len(body.selected_entry_ids):
                     await asyncio.sleep(1)
         finally:
             batch.running = False
             app.state.batch_running = False
+            if app.state.checkpoint:
+                await app.state.checkpoint()
 
         return _batch_response(batch)
 

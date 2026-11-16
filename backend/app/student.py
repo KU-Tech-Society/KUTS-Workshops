@@ -20,9 +20,9 @@ class Submission(BaseModel):
 
 
 def create_student_app(store: Intake) -> FastAPI:
-    origin = os.getenv(
-        "STUDENT_ORIGIN", "https://ku-computing-workshops.github.io"
-    ).rstrip("/")
+    origin = os.getenv("STUDENT_ORIGIN", "https://ku-tech-society.github.io").rstrip(
+        "/"
+    )
     host = os.getenv("STUDENT_API_HOST", "127.0.0.1:8001").lower()
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 

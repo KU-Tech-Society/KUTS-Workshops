@@ -1,9 +1,9 @@
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { csvCell, readCsv } from "./csv";
 import LiveInbox from "./LiveInbox";
+import { api, HOSTED } from "./api";
 import type { Batch, EntryStatus, Preview, PreviewEntry, Team } from "./types";
 
-const API = "http://127.0.0.1:8000";
 const DEFAULT_MAX_INPUT_BYTES = 1_048_576;
 const DEFAULT_MAX_INPUT_ROWS = 500;
 const DEFAULT_MAX_INVITES = 50;
@@ -18,30 +18,6 @@ const labels: Record<EntryStatus, string> = {
 	lookup_failed: "Lookup failed",
 	rate_limited: "Rate limited",
 };
-
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
-	const response = await fetch(`${API}${path}`, {
-		...init,
-		headers: {
-			...(init?.body
-				? { "Content-Type": "application/json" }
-				: {}),
-			...init?.headers,
-		},
-	});
-	const data = await response.json().catch(() => ({}));
-	if (!response.ok) {
-		const detail =
-			typeof data.detail === "string"
-				? data.detail
-				: `Request failed (${response.status}).`;
-		const wait = data.retry_after_seconds
-			? ` Retry after ${data.retry_after_seconds} seconds.`
-			: "";
-		throw new Error(`${detail}${wait}`);
-	}
-	return data as T;
-}
 
 function App() {
 	const [inputMode, setInputMode] = useState<"lines" | "csv">("lines");
@@ -103,6 +79,53 @@ function App() {
 				);
 		});
 	}, []);
+
+	useEffect(() => {
+		if (!HOSTED) return;
+		void api<{ batch: Batch | null }>("/api/batches/latest")
+			.then(({ batch: saved }) => {
+				if (saved) {
+					setBatch(saved);
+					setStep("results");
+				}
+			})
+			.catch((cause) => {
+				setError(
+					cause instanceof Error
+						? `Could not recover saved batch results: ${cause.message}`
+						: "Could not recover saved batch results. Review GitHub before starting another batch.",
+				);
+			});
+	}, []);
+
+	useEffect(() => {
+		if (!HOSTED || !batch?.running) return;
+		let active = true;
+		let timer: ReturnType<typeof setTimeout>;
+		const poll = async () => {
+			try {
+				const current = await api<Batch>(
+					`/api/batches/${batch.id}`,
+				);
+				if (active) setBatch(current);
+			} catch (cause) {
+				if (active) {
+					setError(
+						cause instanceof Error
+							? `Could not load batch results: ${cause.message}`
+							: "Could not load batch results.",
+					);
+				}
+			} finally {
+				if (active) timer = setTimeout(poll, 5000);
+			}
+		};
+		void poll();
+		return () => {
+			active = false;
+			clearTimeout(timer);
+		};
+	}, [batch?.id, batch?.running]);
 
 	const csvRows = useMemo(() => {
 		if (inputMode !== "csv" || !text) return [];
@@ -252,6 +275,15 @@ function App() {
 					? cause.message
 					: "Invitation batch failed.",
 			);
+			if (HOSTED) {
+				const saved = await api<{
+					batch: Batch | null;
+				}>("/api/batches/latest").catch(() => null);
+				if (saved?.batch) {
+					setBatch(saved.batch);
+					setStep("results");
+				}
+			}
 		} finally {
 			setBusy(false);
 		}
@@ -355,15 +387,19 @@ function App() {
 			</header>
 
 			<div className="notice" role="note">
-				<strong>Local-only organiser tool.</strong>{" "}
+				<strong>
+					{HOSTED
+						? "Organiser-only access."
+						: "Local-only organiser tool."}
+				</strong>{" "}
 				Invitations grant organisation membership and
 				can expose existing repositories. GitHub
 				accounts do not verify student identity.
 				{tokenConfigured === false && (
 					<p className="inline-warning">
-						Configure GITHUB_TOKEN in the
-						backend .env file to use GitHub
-						features.
+						{HOSTED
+							? "GitHub invitation credentials are not configured. Contact the society administrator."
+							: "Configure GITHUB_TOKEN in the backend .env file to use GitHub features."}
 					</p>
 				)}
 			</div>
@@ -1013,6 +1049,14 @@ function App() {
 			{step === "results" && batch && (
 				<section className="card">
 					<h2>4. Results</h2>
+					{batch.running && (
+						<p role="status">
+							Batch processing or
+							recovery is in progress.
+							Do not start a
+							replacement batch.
+						</p>
+					)}
 					<p className="muted">
 						Batch time:{" "}
 						{new Date(
@@ -1142,8 +1186,11 @@ function App() {
 			)}
 
 			<footer>
-				KU-Computing-Workshops · Local organiser
-				workflow · No student identity verification
+				KU-Computing-Workshops ·{" "}
+				{HOSTED
+					? "Organiser workflow"
+					: "Local organiser workflow"}{" "}
+				· No student identity verification
 			</footer>
 		</main>
 	);

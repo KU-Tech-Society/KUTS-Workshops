@@ -550,6 +550,17 @@ footer {
   margin: 0 auto;
 }
 
+.organiser-session {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 16px 28px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
 .student-brand {
   display: flex;
   align-items: center;

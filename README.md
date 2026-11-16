@@ -1,12 +1,141 @@
 # KU Workshops
 
-Collect students' GitHub usernames, review their accounts, and send invitations to **KU-Computing-Workshops**.
+Collect students' GitHub usernames, review their accounts, and send invitations to **KU-Computing-Workshops**, entirely from your browser. Organisers do not need Python, Node.js, Cloudflare, or a terminal.
 
 **Choose a workshop → submit a username → organiser reviews → organiser confirms → students accept**
 
-Students can choose **KU Computing Workshops (CW)** or **KU Artificial Intelligence Workshops (AIW)**. Their submissions appear live on the organiser's computer. Both choices currently use the same GitHub organisation; workshop selection does not grant extra access.
+Students choose **KU Computing Workshops (CW)** or **KU Artificial Intelligence Workshops (AIW)** at **[ku-tech-society.github.io/KUTS-Workshops/](https://ku-tech-society.github.io/KUTS-Workshops/)**. Both choices currently use the same GitHub organisation; workshop selection does not grant extra access.
 
-> The organiser page stays on your computer. Only the student page and its restricted submission endpoint are public. No invitations are sent automatically, and students must accept them on GitHub.
+The student page stays on GitHub Pages. Vercel hosts the organiser page and FastAPI backend. Upstash Redis holds shared, expiring state so submissions and batch checkpoints survive function restarts. Cloudflare Tunnel is no longer needed for hosted operation.
+
+## Run a Workshop
+
+After the one-time setup below:
+
+1. Open the society's **Vercel organiser URL** and select **Sign in with GitHub**. Only approved GitHub accounts can access organiser operations.
+2. Select **Open collection** and share the student page URL plus the six-character workshop code, for example `K7MP4R`. Letter case does not matter; codes avoid `0`, `1`, `I`, `L`, and `O`.
+3. Submissions appear in the inbox, refreshed about every three seconds. Choose **Use usernames in fresh import**, or upload/paste usernames from another signup form.
+4. Import, optionally select an existing team, and select **Resolve accounts (read-only)**. Visually check the resolved profiles and deselect anyone you do not intend to invite. A valid GitHub account is not proof of student identity.
+5. Review the exact usernames, organisation, ordinary-member role, team, and count. Tick the confirmation and select **Send N invitations to KU-Computing-Workshops**.
+6. Check per-account results and export a results CSV if needed. Students must accept invitations on GitHub; submission is not automatic membership.
+7. Close collection, export anything needed, and select **Clear session**. This clears the shared workshop inbox and all previews/results, closes collection, and rotates the code for everyone. Sign out when finished.
+
+Team membership can grant existing repository access. Existing members are skipped rather than automatically added to teams. Pending invitations are not resent or cancelled. New submissions never change a review that is already in progress.
+
+## One-Time Hosted Setup
+
+A society maintainer with GitHub repository, Vercel, and organisation-owner access completes this once. Regular organisers only need their approved GitHub account and the organiser URL afterward.
+
+### 1. Connect the Repository to Vercel
+
+Import this GitHub repository into a Vercel project. Keep the **Root Directory at the repository root**, not `backend/` or `frontend/`. Use the FastAPI framework preset and retain the repository's build settings.
+
+[pyproject.toml](pyproject.toml) selects `backend.main:app`. [vercel.json](vercel.json) builds the organiser UI into `public/` and sets a 300-second function limit. [requirements.txt](requirements.txt) installs the backend dependencies, and [.python-version](.python-version) selects Python 3.12. No development server or dual-port launcher runs on Vercel.
+
+Choose a stable production domain, for example `https://your-project.vercel.app`. Use that same origin consistently for sign-in and the student API. Required environment variables must be configured before a successful deployment; missing auth/storage configuration fails closed.
+
+### 2. Connect Upstash Redis
+
+From Vercel's Marketplace/Storage integration, create or connect **Upstash Redis**. Choose a suitable region and a plan/retention policy for the society's data. Connect it to the production project so `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are available to the backend. Use the normal server-side REST token, not a read-only token. Do not expose it in frontend variables.
+
+Use a persistent database without eviction for workshop state: losing Redis data can also lose replay protection. If storage is unavailable or has been reset, stop invitation operations and reconcile GitHub members/pending invitations before another reviewed batch. Enable appropriate Vercel edge rate limiting, spending limits, and monitoring for the public intake endpoint.
+
+### 3. Register GitHub Sign-In
+
+Create a dedicated **GitHub OAuth App** in GitHub **Settings → Developer settings → OAuth Apps**:
+
+| Setting | Value |
+| --- | --- |
+| Homepage URL | Your stable Vercel organiser origin |
+| Authorization callback URL | `https://your-project.vercel.app/auth/callback` |
+| Callback wildcard matching | Disabled; use the exact callback URL |
+
+Copy the client ID and generated client secret into the server-side Vercel settings below. This OAuth app identifies organisers only; it requests no extra repository/organisation scopes and does not send invitations with a user's OAuth token. Login uses state, PKCE, and an opaque Secure/HttpOnly session cookie.
+
+Approve organisers by their **numeric GitHub account IDs**, not changeable usernames. Obtain each account's `id` from GitHub's documented `GET https://api.github.com/users/USERNAME` endpoint and independently confirm it is the intended person. Remove an ID and redeploy to revoke access; every authenticated request checks the configured allowlist.
+
+### 4. Set the Production Environment Variables
+
+In Vercel **Settings → Environment Variables**, set the following for **Production**, then redeploy. [.env.example](.env.example) contains placeholders only; do not upload your local `.env`.
+
+| Variable | Value |
+| --- | --- |
+| `APP_ORIGIN` | Exact organiser origin, e.g. `https://your-project.vercel.app`, without a path |
+| `STUDENT_ORIGIN` | `https://ku-tech-society.github.io`, without `/KUTS-Workshops/` |
+| `GITHUB_OAUTH_CLIENT_ID` | OAuth App client ID |
+| `GITHUB_OAUTH_CLIENT_SECRET` | OAuth App client secret; server only |
+| `ORGANISER_GITHUB_IDS` | Comma-separated approved numeric IDs, e.g. `12345678,87654321` |
+| `GITHUB_TOKEN` | Organisation owner's fine-grained PAT restricted to KU-Computing-Workshops with organisation **Members: read and write** only |
+| `UPSTASH_REDIS_REST_URL` | HTTPS Redis REST endpoint from Upstash |
+| `UPSTASH_REDIS_REST_TOKEN` | Server-side Redis REST token |
+
+The invitation PAT needs no repository write permissions. Its owner must be an organisation owner; approval and SSO policy still apply. Fine-grained PATs are SSO-authorised during creation. Prefer a short expiry and rotate/revoke it in GitHub when appropriate.
+
+**Allowlisting an organiser delegates the ability to send ordinary-member invitations through the server-held owner's PAT.** Keep that list restricted to trusted organisers, including where the organiser is not personally an organisation owner. They never receive the PAT. Never put PATs, OAuth secrets, Redis tokens, session cookies, or workshop codes into `VITE_*` variables, URLs, Actions inputs, logs, or messages.
+
+Set secrets for Production only unless you have a separate staging configuration. Preview deployments need their own OAuth callback/origin and separate Redis namespace/database; never point an untrusted preview at production data or credentials. `REDIS_NAMESPACE` optionally overrides the default `kuts-<VERCEL_ENV>` key prefix. Local-only settings `FRONTEND_ORIGIN` and `STUDENT_API_HOST` are not needed by hosted mode.
+
+Use Vercel's **production domain**, not a generated preview/deployment URL. The public student endpoint must be reachable without Vercel's platform login: retain protection on previews but do not require platform authentication for the production student API. Organiser API access is protected by this application's GitHub sessions and allowlist. Do not place a platform bypass secret in the student page.
+
+### 5. Point GitHub Pages at Vercel
+
+In the GitHub repository, set **Settings → Pages → Source** to **GitHub Actions**. Under **Settings → Secrets and variables → Actions → Variables**, add `STUDENT_API_URL` with your stable Vercel origin. This URL is public configuration, not a credential.
+
+Run **Actions → Publish student page → Run workflow** once. Leave the optional `api_url` input empty to use the repository variable, or enter a new HTTPS backend origin to override it. The workflow publishes only the student build. Both the root URL and `/student.html` work; the organiser app is not published to Pages.
+
+No tunnel or local computer needs to stay running. The stable backend URL only needs updating in Pages if you change the Vercel production domain.
+
+### 6. Check Before a Real Workshop
+
+Sign in using an approved account, open collection, and submit a fictional username from the student page. Confirm it appears with CW/AIW in the organiser inbox. Check that signed-out/unapproved accounts cannot access organiser data. Clear the test session afterward. Do not click **Send** merely to test deployment.
+
+## Hosted Recovery, Limits, and Privacy
+
+- Reviews are bound to the organiser who created them and expire after 15 minutes. Another organiser cannot confirm or inspect that private review/batch by replacing an ID.
+- Redis holds the shared inbox, preview/batch state, sessions, rate limits, and operation locks. Closing a tab or restarting a Vercel function does not clear workshop data. The inbox expires after four hours. Sessions expire after eight hours or on sign-out. OAuth state is single-use and expires after ten minutes.
+- Expired previews are rejected and removed on subsequent state processing. Core records have a 24-hour default idle storage TTL; active workshop writes can extend the physical storage of expired records until cleanup. Clear session to remove the current shared workshop data promptly. Hosting/Redis provider backups and platform log retention are separate policies to configure with the society.
+- There are at most 50 invitations per reviewed batch, sent sequentially, with server-side member role and approved team IDs. Durable consumed-preview markers and ownership-checked distributed locks prevent repeat clicks and overlapping batches across instances.
+- Before any invitation request, the reviewed batch and unfinished per-account outcomes are checkpointed. Results are saved as accounts are processed. If an invocation or connection fails, refresh the organiser page to recover the latest saved batch. An expired operation lease may take up to 60 seconds to release. Unfinished actions are **status unknown - review required**, not automatically retried. Exactly-once delivery is not claimed.
+- Vercel requests have a 300-second limit; the app budgets 240 seconds for a core operation. A slow/large lookup may need a smaller fresh import. An interrupted invitation batch must be reconciled in GitHub before any fresh retry. There is no background queue or automatic whole-batch retry.
+- The inbox polls every three seconds while the organiser page is open. Original bounds remain: 1 MiB/500 import rows, 500 inbox entries, one username per student request, 2 KiB student request bodies, and 120 student attempts per minute across instances. These are abuse controls, not student identity verification or full DDoS protection.
+- No credentials reach browser storage or the student bundle. OAuth access tokens are used only server-side to verify identity and are not persisted in the app. Student GitHub usernames and batch results are personal data; configure Vercel/Redis regions and retention appropriately. Do not enable body/header debug logging. GitHub request errors are redacted; platform-level logging must also be reviewed.
+
+## Hosted Troubleshooting
+
+| Problem | Check |
+| --- | --- |
+| Vercel build/start fails | Import from repository root with FastAPI selected. Keep the checked-in entrypoint/build settings and configure all required Production variables, then redeploy. |
+| Sign-in says account is not approved | Verify the numeric GitHub ID, not username, is in `ORGANISER_GITHUB_IDS`. Redeploy after updating it. |
+| GitHub callback fails | Match `APP_ORIGIN`, production domain, and the OAuth App's exact `/auth/callback` URL. Start sign-in again if state expired; do not reuse an old callback link. |
+| Students get 403 or cannot submit | Open collection, check the six-character code and exact `STUDENT_ORIGIN`. Republish Pages if the backend URL changed. Ensure production is not behind a Vercel platform login. |
+| Operation busy | Wait for the active organiser action or its 60-second lease to end. Do not keep resending an invitation request. |
+| Session expires | Sign in again. Your saved batch is recovered; check results before any new review. |
+| GitHub denies access | Check PAT expiry, Members permission, owner role, organisation approval, and SSO. A successful organiser sign-in is separate from invitation-token permission. |
+| Storage unavailable or status unknown | Stop sending. Restore storage if needed, inspect GitHub members/pending invitations, and reconcile saved results before any fresh reviewed batch. |
+
+## Development and Automated Checks
+
+Developers need Python 3.12 and Node.js 22. From the repository root:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python3 -m pip install -r backend/requirements-dev.txt
+npm --prefix frontend ci
+PYTHONPATH=backend python3 -m pytest backend/tests
+npm --prefix frontend test
+npm --prefix frontend run build:hosted
+VITE_STUDENT_API_URL=https://your-project.vercel.app npm --prefix frontend run build:student
+```
+
+Backend tests use mocked GitHub responses and a local Redis emulator, including real Lua scripts and the Upstash SDK command interface. They do not connect to live Redis or send live invitations. Browser automation fixtures must stay separate from normal operation. Live GitHub OAuth, Vercel deployment, and provisioned Redis require the maintainer's real setup and are not implied by passing local tests.
+
+References: [Vercel FastAPI](https://vercel.com/docs/frameworks/backend/fastapi), [Vercel function limits](https://vercel.com/docs/functions/limitations), [GitHub OAuth](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps), [Upstash Python SDK](https://upstash.com/docs/redis/sdks/py/gettingstarted).
+
+<details>
+<summary>Optional local development and legacy tunnel mode</summary>
+
+The guide below is for the original local-only development mode, not the hosted organiser workflow. It uses in-memory state, a separate local API, and optional Cloudflare Tunnel. Its `.env`, privacy, and startup instructions apply only to that legacy mode; do not use its local organiser entrypoint for Vercel.
 
 ## Before You Start
 
@@ -271,3 +400,5 @@ The organiser build goes to `frontend/dist/`; the student build goes to `fronten
 - [REST API rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)
 - [Inviting users to an organisation](https://docs.github.com/en/organizations/managing-membership-in-your-organization/inviting-users-to-join-your-organization)
 - [Personal access token SSO authorization](https://docs.github.com/en/authentication/authenticating-with-single-sign-on/authorizing-a-personal-access-token-for-use-with-single-sign-on)
+
+</details>
