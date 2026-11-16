@@ -1,4 +1,5 @@
 import asyncio
+import json
 import tomllib
 from pathlib import Path
 
@@ -26,6 +27,36 @@ def test_vercel_manifest_declares_all_backend_runtime_dependencies():
     }
     assert set(manifest["project"]["dependencies"]) == requirements
     assert manifest["tool"]["vercel"]["entrypoint"] == "backend.main:app"
+
+
+def test_vercel_function_includes_built_organiser_frontend():
+    root = Path(__file__).resolve().parents[2]
+    config = json.loads((root / "vercel.json").read_text())
+    assert config["functions"]["backend/main.py"]["includeFiles"] == "public/**"
+    assert "build:hosted" in config["buildCommand"]
+
+
+def test_hosted_serves_bundled_organiser_html_and_assets(monkeypatch, tmp_path):
+    import app.hosted as hosted
+
+    public = tmp_path / "public"
+    (public / "assets").mkdir(parents=True)
+    (public / "index.html").write_text(
+        '<html><div id="root"></div><script src="/assets/organiser.js"></script></html>'
+    )
+    (public / "assets/organiser.js").write_text('console.log("fixture");')
+    monkeypatch.setattr(hosted, "__file__", str(tmp_path / "backend/app/hosted.py"))
+    first, second, repository, fake = hosted_clients()
+    with first:
+        response = first.get("/")
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        assert '<div id="root">' in response.text
+        asset = first.get("/assets/organiser.js")
+        assert asset.status_code == 200
+        assert 'console.log("fixture");' in asset.text
+        assert first.get("/api/intake").status_code == 401
+        assert fake.invite_calls == []
 
 
 class TestRedis(fakeredis.aioredis.FakeRedis):
