@@ -392,3 +392,5 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# KUTS was here
